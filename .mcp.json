@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "scripts/playwright-mcp.mjs",
+        "--allowed-origins",
+        "http://127.0.0.1:5173;http://localhost:5173",
+        "--output-dir",
+        ".playwright-mcp"
+      ]
+    }
+  }
+}
