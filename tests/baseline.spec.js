@@ -64,20 +64,44 @@ test('invalid entries preserve the existing transactions and totals', async ({ p
   await expect(page.getByRole('alert')).toContainText('description')
   await expect(page.locator('tbody tr')).toHaveCount(8)
   await expect(page.locator('.balance-amount')).toHaveText('$4255.00')
+
+  for (const amount of ['0.01', '1000000']) {
+    await page.getByLabel('Description', { exact: true }).fill('x'.repeat(120))
+    await page.getByLabel('Amount (USD)').fill(amount)
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  }
+  await expect(page.locator('tbody tr')).toHaveCount(10)
+  await expect(page.locator('.summary-card .expense-amount')).toHaveText('$1001545.01')
+  await expect(page.locator('.balance-amount')).toHaveText('$-995745.01')
 })
 
 test('table filters combine, show an empty state, and leave global totals alone', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
+  const columnPositions = () => page.getByRole('columnheader').evaluateAll(headers =>
+    headers.map(header => {
+      const { x, width } = header.getBoundingClientRect()
+      return { x, width }
+    }))
+  const startingColumns = await columnPositions()
   await page.getByLabel('Filter type').selectOption('income')
   await expect(page.locator('tbody tr')).toHaveCount(2)
+  expect(await columnPositions()).toEqual(startingColumns)
   await page.getByLabel('Filter category').selectOption('food')
   await expect(page.getByText('No transactions match these filters.')).toBeVisible()
+  expect(await columnPositions()).toEqual(startingColumns)
   await page.getByLabel('Filter type').selectOption('expense')
   await expect(page.locator('tbody tr')).toHaveCount(2)
+  expect(await columnPositions()).toEqual(startingColumns)
   await expect(page.getByRole('table')).toContainText('Groceries')
   await expect(page.getByRole('table')).toContainText('Dinner Out')
   await expect(page.locator('.summary-card .expense-amount')).toHaveText('$1545.00')
   await expect(page.locator('.balance-amount')).toHaveText('$4255.00')
+  await page.getByLabel('Filter type').selectOption('all')
+  await page.getByLabel('Filter category').selectOption('all')
+  await expect(page.locator('tbody tr')).toHaveCount(8)
+  expect(await columnPositions()).toEqual(startingColumns)
 })
 
 test('repeat entries stay distinct and reload resets synthetic changes', async ({ page }) => {
@@ -101,20 +125,26 @@ test('repeat entries stay distinct and reload resets synthetic changes', async (
 })
 
 test('narrow screens keep controls labelled and page content within the viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 800 })
   await page.goto('/')
-  await expect(page.getByRole('main')).toBeVisible()
-  for (const [role, name] of [
-    ['textbox', 'Description'], ['spinbutton', 'Amount (USD)'],
-    ['combobox', 'Transaction type'], ['combobox', 'Category'],
-    ['combobox', 'Filter type'], ['combobox', 'Filter category'],
-  ]) {
-    const control = page.getByRole(role, { name, exact: true })
-    await expect(control).toBeVisible()
-    expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44)
+  for (const width of [320, 360, 375]) {
+    await page.setViewportSize({ width, height: 800 })
+    await expect(page.getByRole('main')).toBeVisible()
+    for (const [role, name] of [
+      ['textbox', 'Description'], ['spinbutton', 'Amount (USD)'],
+      ['combobox', 'Transaction type'], ['combobox', 'Category'],
+      ['combobox', 'Filter type'], ['combobox', 'Filter category'],
+    ]) {
+      const control = page.getByRole(role, { name, exact: true })
+      await expect(control).toBeVisible()
+      const box = await control.boundingBox()
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(box.width).toBeGreaterThanOrEqual(44)
+    }
+    expect(await page.locator('tbody td').first().evaluate(el =>
+      parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByLabel('Description', { exact: true }).focus()
+    await page.keyboard.press('Tab')
+    await expect(page.getByLabel('Amount (USD)')).toBeFocused()
   }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.getByLabel('Description', { exact: true }).focus()
-  await page.keyboard.press('Tab')
-  await expect(page.getByLabel('Amount (USD)')).toBeFocused()
 })
